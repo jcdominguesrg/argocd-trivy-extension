@@ -16,8 +16,7 @@ const Extension = (props) => {
   let [container] = useState(isPod ? resource?.spec?.containers[0]?.name : resource?.spec?.template?.spec?.containers[0]?.name);
 
   const baseURI = `${window.location.origin}/api/v1/applications/${appName}/resource`
-  let [reportUrl, setReportUrl] = useState(`${baseURI}?name=${resourceKind}-${resourceName}-${container}&namespace=${resourceNamespace}&resourceName=${resourceKind}-${resourceName}-${container}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`);
-
+  let [reportUrl, setReportUrl] = useState(`${baseURI}?name=${resourceKind}-${resourceName}-${container}&namespace=${resourceNamespace}&resourceName=${resourceKind}-${resourceName}-${container}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io&appNamespace=${application?.metadata?.namespace}`);
   const containers = isPod ? resource?.spec?.containers.map(c => c.name) : resource?.spec?.template?.spec?.containers.map(c => c.name)
 
   const [currentTabIndex, setCurrentTabIndex] = useState(0);
@@ -27,7 +26,7 @@ const Extension = (props) => {
 
   const onOptionChangeHandler = (event) => {
     container = event.target.value
-    setReportUrl(`${baseURI}?name=${resourceKind}-${resourceName}-${container}&namespace=${resourceNamespace}&resourceName=${resourceKind}-${resourceName}-${container}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`)
+    setReportUrl(`${baseURI}?name=${resourceKind}-${resourceName}-${container}&namespace=${resourceNamespace}&resourceName=${resourceKind}-${resourceName}-${container}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io&appNamespace=${application?.metadata?.namespace}`)
   };
 
   return (
