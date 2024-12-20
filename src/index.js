@@ -7,9 +7,7 @@ import Dashboard from './components/dashboard/dashboard';
 const Extension = (props) => {
 
   const { resource, application } = props;
-  const appName = application?.metadata?.namespace === 'argocd' 
-    ? application?.metadata?.name || ""
-    : `${application?.metadata?.namespace}/${application?.metadata?.name}`;
+  const appName = application?.metadata?.name || "";
   const resourceNamespace = resource?.metadata?.namespace || "";
   const isPod = resource?.kind === "Pod"
   const resourceName = isPod ? resource?.metadata?.ownerReferences[0].name.toLowerCase() : resource?.metadata?.name;
@@ -18,8 +16,7 @@ const Extension = (props) => {
   let [container] = useState(isPod ? resource?.spec?.containers[0]?.name : resource?.spec?.template?.spec?.containers[0]?.name);
 
   const baseURI = `${window.location.origin}/api/v1/applications/${appName}/resource`
-  let [reportUrl, setReportUrl] = useState(`${baseURI}?name=${resourceKind}-${resourceName}-${container}&namespace=${resourceNamespace}&resourceName=${resourceKind}-${resourceName}-${container}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`);
-
+  let [reportUrl, setReportUrl] = useState(`${baseURI}?name=${resourceKind}-${resourceName}-${container}&namespace=${resourceNamespace}&resourceName=${resourceKind}-${resourceName}-${container}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io&appNamespace=${application?.metadata?.namespace}`);
   const containers = isPod ? resource?.spec?.containers.map(c => c.name) : resource?.spec?.template?.spec?.containers.map(c => c.name)
 
   const [currentTabIndex, setCurrentTabIndex] = useState(0);
@@ -29,7 +26,7 @@ const Extension = (props) => {
 
   const onOptionChangeHandler = (event) => {
     container = event.target.value
-    setReportUrl(`${baseURI}?name=${resourceKind}-${resourceName}-${container}&namespace=${resourceNamespace}&resourceName=${resourceKind}-${resourceName}-${container}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`)
+    setReportUrl(`${baseURI}?name=${resourceKind}-${resourceName}-${container}&namespace=${resourceNamespace}&resourceName=${resourceKind}-${resourceName}-${container}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io&appNamespace=${application?.metadata?.namespace}`)
   };
 
   return (
