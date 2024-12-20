@@ -7,7 +7,9 @@ import Dashboard from './components/dashboard/dashboard';
 const Extension = (props) => {
 
   const { resource, application } = props;
-  const appName = application?.metadata?.name || "";
+  const appName = application?.metadata?.namespace === 'argocd' 
+    ? application?.metadata?.name || ""
+    : `${application?.metadata?.namespace}/${application?.metadata?.name}`;
   const resourceNamespace = resource?.metadata?.namespace || "";
   const isPod = resource?.kind === "Pod"
   const resourceName = isPod ? resource?.metadata?.ownerReferences[0].name.toLowerCase() : resource?.metadata?.name;
