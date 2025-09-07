@@ -10,32 +10,43 @@ const Extension = (props) => {
   const appName = application?.metadata?.name || "";
   const resourceNamespace = resource?.metadata?.namespace || "";
   const isPod = resource?.kind === "Pod"
+  const isCronJob = resource?.kind === "CronJob"
   const resourceName = isPod ? resource?.metadata?.ownerReferences[0].name.toLowerCase() : resource?.metadata?.name;
   const resourceKind = isPod ? resource?.metadata?.ownerReferences[0].kind.toLowerCase() : resource?.kind?.toLowerCase();
 
-  let [container] = useState(isPod ? resource?.spec?.containers[0]?.name : resource?.spec?.template?.spec?.containers[0]?.name);
+  let [containerName] = useState(isPod ? resource?.spec?.containers[0]?.name : isCronJob ? resource?.spec?.jobTemplate?.spec?.template?.spec.containers[0]?.name : resource?.spec?.template?.spec?.containers[0]?.name);
 
   const baseURI = `${window.location.origin}/api/v1/applications/${appName}/resource`
-  let [reportUrl, setReportUrl] = useState(`${baseURI}?name=${resourceKind}-${resourceName}-${container}&namespace=${resourceNamespace}&resourceName=${resourceKind}-${resourceName}-${container}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`);
+  let [reportUrl, setReportUrl] = useState(`${baseURI}?name=${resourceKind}-${resourceName}-${containerName}&namespace=${resourceNamespace}&resourceName=${resourceKind}-${resourceName}-${containerName}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`);
 
-  const containers = isPod ? resource?.spec?.containers.map(c => c.name) : resource?.spec?.template?.spec?.containers.map(c => c.name)
+  let containers = []
+  if(isPod) {
+    containers = [...resource?.spec?.containers, ...resource.spec?.initContainers ?? []]
+  } else if (isCronJob) {
+    containers = [...resource?.spec?.jobTemplate?.spec?.template?.spec.containers, ...resource?.spec?.jobTemplate?.spec?.template?.spec.initContainers ?? []]
+  } else {
+    containers = [...resource?.spec?.template?.spec.containers, ...resource?.spec?.template?.spec.initContainers ?? []]
+  }
+    
+  const containerNames = containers.map(c => c.name)  
+  const images = containers.map(c => c.image)  
 
   const [currentTabIndex, setCurrentTabIndex] = useState(0);
-  const handleTabChange = (e, tabIndex) => {
+  const handleTabChange = (_e, tabIndex) => {
     setCurrentTabIndex(tabIndex);
   };
 
   const onOptionChangeHandler = (event) => {
-    container = event.target.value
-    setReportUrl(`${baseURI}?name=${resourceKind}-${resourceName}-${container}&namespace=${resourceNamespace}&resourceName=${resourceKind}-${resourceName}-${container}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`)
+    containerName = event.target.value
+    setReportUrl(`${baseURI}?name=${resourceKind}-${resourceName}-${containerName}&namespace=${resourceNamespace}&resourceName=${resourceKind}-${resourceName}-${containerName}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`)
   };
 
   return (
     <div>
       <React.Fragment>
         <select class="vulnerability-report__container_dropdown" onChange={onOptionChangeHandler}>
-          {containers.map((container, index) => {
-            return (<option key={index} value={container}>{container}</option>)
+          {containerNames.map((container, index) => {
+            return (<option key={index} value={container}>{`${container} (${images[index]})`}</option>)
           })}
         </select>
         <Tabs value={currentTabIndex} onChange={handleTabChange}>
@@ -65,4 +76,5 @@ const component = Extension;
   );
   window?.extensionsAPI?.registerResourceExtension(component, '', 'Pod', 'Vulnerabilities', { icon: "fa fa-triangle-exclamation" });
   window?.extensionsAPI?.registerResourceExtension(component, '*', 'StatefulSet', 'Vulnerabilities', { icon: "fa fa-triangle-exclamation" });
+  window?.extensionsAPI?.registerResourceExtension(component, '*', 'CronJob', 'Vulnerabilities', { icon: "fa fa-triangle-exclamation" });
 })(window);
