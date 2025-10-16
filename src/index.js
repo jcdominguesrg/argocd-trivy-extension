@@ -4,267 +4,250 @@ import { Tab, Tabs } from "@mui/material";
 import DataGrid from './components/grid/vulnerability-report';
 import Dashboard from './components/dashboard/dashboard';
 
-// FORCE RELOAD - VERSION 0.3.9 - COMPLETE REWRITE
-window.EXTENSION_VERSION = '0.3.9-FORCE-RELOAD';
+// Bump visível p/ forçar recarregamento do bundle no Argo
+window.EXTENSION_VERSION = '0.3.10';
 
-// Função inteligente para corrigir nomes truncados
-const fixName = (name) => {
-  console.log(`🔧 V0.3.9 - FIXING NAME: ${name}`);
-  
-  // Se o nome original tiver mais de 63 caracteres e contiver um hash no final
-  const match = name.match(/(.+)-([a-z0-9]{7,10})$/);
-  if (match) {
-    // Mantém apenas o prefixo + hash, removendo o excesso do meio
-    const base = match[1].split('-').slice(0, 3).join('-'); // pega só primeiros 3 blocos
-    const fixedName = `${base}-${match[2]}`.slice(0, 63);
-    console.log(`✅ V0.3.9 - FIXED NAME: ${name} -> ${fixedName}`);
-    return fixedName;
+// ---------- Utils ----------
+const fixName = (name = '') => {
+  try {
+    const n = String(name).toLowerCase();
+    const m = n.match(/(.+)-([a-z0-9]{7,10})$/);
+    if (m) {
+      const base = m[1].split('-').slice(0, 3).join('-');
+      return `${base}-${m[2]}`.slice(0, 63);
+    }
+    return n.slice(0, 63);
+  } catch {
+    return (name || '').toString().slice(0, 63);
   }
-  
-  const truncatedName = name.slice(0, 63);
-  console.log(`✂️ V0.3.9 - TRUNCATED NAME: ${name} -> ${truncatedName}`);
-  return truncatedName;
 };
 
+// pega último bloco (hash) de um nome "xxx-yyy-<hash>"
+const lastBlock = (name = '') => {
+  const parts = String(name).split('-');
+  return parts[parts.length - 1] || '';
+};
+
+// ---------- Componente ----------
 const Extension = (props) => {
-  console.log(`🚀🚀🚀 EXTENSION V0.3.9 - COMPLETE REWRITE - FORCE RELOAD 🚀🚀🚀`);
-  console.log(`🚀 VERSION: ${window.EXTENSION_VERSION}`);
-  console.log(`🚀 DEBUG: Extension component started`);
-  console.log(`🚀 DEBUG: Props:`, props);
+  console.log('🔌 Trivy Ext v', window.EXTENSION_VERSION, props);
 
-  const { resource, application } = props;
-  const appName = application?.metadata?.name || "";
-  const resourceNamespace = resource?.metadata?.namespace || "";
-  const isPod = resource?.kind === "Pod";
-  const isCronJob = resource?.kind === "CronJob";
-  const resourceName = fixName(isPod ? resource?.metadata?.ownerReferences[0].name.toLowerCase() : resource?.metadata?.name);
-  const resourceKind = isPod ? resource?.metadata?.ownerReferences[0].kind.toLowerCase() : resource?.kind?.toLowerCase();
-  
-  console.log(`🚀 DEBUG: Extracted values:`, {
-    appName,
-    resourceNamespace,
-    isPod,
-    isCronJob,
-    resourceName,
-    resourceKind
-  });
+  const { resource = {}, application = {} } = props;
+  const appName = application?.metadata?.name || '';
+  const resourceNamespace = resource?.metadata?.namespace || '';
+  const isPod = resource?.kind === 'Pod';
+  const isCronJob = resource?.kind === 'CronJob';
 
-  const [containerName, setContainerName] = useState(isPod ? resource?.spec?.containers[0]?.name : isCronJob ? resource?.spec?.jobTemplate?.spec?.template?.spec.containers[0]?.name : resource?.spec?.template?.spec?.containers[0]?.name);
+  // Nome "base" do recurso que gerou a imagem a ser escaneada
+  const baseNameRaw = isPod
+    ? resource?.metadata?.ownerReferences?.[0]?.name
+    : resource?.metadata?.name;
 
-  const baseURI = `${window.location.origin}/api/v1/applications/${appName}/resource`
-  
-  // Função para gerar nomes de recurso (completo e truncado) - DEPRECATED
-  // REMOVIDA - não está sendo usada mais
-  
-  // Função para descobrir o VulnerabilityReport real
-  const tryResourceNames = async (kind, name, container) => {
-    console.log(`🚀🚀🚀 V0.3.9 - DYNAMIC DISCOVERY SEARCH 🚀🚀🚀`);
-    console.log(`🚀 VERSION: ${window.EXTENSION_VERSION}`);
-    console.log(`🔍 Discovering real VulnerabilityReport name for:`, { kind, name, container });
-    
-    // Primeiro, tenta listar todos os VulnerabilityReports no namespace
-    try {
-      console.log(`🔍 Step 1: Listing all VulnerabilityReports in namespace: ${resourceNamespace}`);
-      const listUrl = `${baseURI}?namespace=${resourceNamespace}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`;
-      
-      const listResponse = await fetch(listUrl, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' }
-      });
-      
-      if (listResponse.ok) {
-        const listData = await listResponse.json();
-        console.log(`📋 Found VulnerabilityReports:`, listData);
-        
-        if (listData.items && listData.items.length > 0) {
-          console.log(`📋 All VulnerabilityReports found:`, listData.items.map(item => item.metadata.name));
-          
-          // Procura por VulnerabilityReports que contenham partes do nome da aplicação
-          const matchingReports = listData.items.filter(item => {
-            const reportName = item.metadata?.name || '';
-            const appNameLower = appName.toLowerCase();
-            const resourceNameLower = resourceName.toLowerCase();
-            
-            // Procura por correspondências inteligentes
-            return reportName.toLowerCase().includes(appNameLower) || 
-                   reportName.toLowerCase().includes(resourceNameLower) ||
-                   reportName.toLowerCase().includes(kind.toLowerCase()) ||
-                   // Procura por padrões de hash (últimos 10 caracteres)
-                   reportName.toLowerCase().includes(name.substring(name.length - 10).toLowerCase());
-          });
-          
-          if (matchingReports.length > 0) {
-            console.log(`✅ Found matching VulnerabilityReports:`, matchingReports.map(r => r.metadata.name));
-            const firstMatch = matchingReports[0];
-            const realName = firstMatch.metadata.name;
-            
-            const finalUrl = `${baseURI}?name=${realName}&namespace=${resourceNamespace}&resourceName=${realName}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`;
-            console.log(`🎯 Using real VulnerabilityReport: ${realName}`);
-            return finalUrl;
-          } else {
-            console.log(`❌ No matching VulnerabilityReports found for app: ${appName}, resource: ${resourceName}`);
-          }
-        }
-      }
-    } catch (error) {
-      console.log(`💥 Error listing VulnerabilityReports:`, error);
-    }
-    
-    // Fallback: tenta nomes baseados nos padrões conhecidos
-    console.log(`🔍 Step 2: Trying known patterns`);
-    const possibleNames = [
-      `${kind}-${name}`,                    // Nome corrigido
-      `${kind}-${name}-${container}`,       // Com container
-      `${kind}-${name.substring(0, 20)}`,   // Truncado
-      `${kind}-${name.substring(0, 10)}`,   // Primeiros 10 caracteres
-      `${kind}-${name.substring(name.length - 10)}`, // Últimos 10 caracteres
+  const resourceName = fixName(baseNameRaw || '');
+  const resourceKind = (isPod
+    ? resource?.metadata?.ownerReferences?.[0]?.kind
+    : resource?.kind) || '';
+
+  // containers (corrigido: nunca espalhar undefined)
+  let containers = [];
+  if (isPod) {
+    containers = [
+      ...(resource?.spec?.containers ?? []),
+      ...(resource?.spec?.initContainers ?? []),
     ];
-    
-    console.log(`🎯 Trying fallback names:`, possibleNames);
-    
-    for (const resourceName of possibleNames) {
-      const testUrl = `${baseURI}?name=${resourceName}&namespace=${resourceNamespace}&resourceName=${resourceName}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`;
-      
-      try {
-        console.log(`🔗 Testing: ${testUrl}`);
-        const response = await fetch(testUrl, { 
-          method: 'GET',
-          headers: { 'Accept': 'application/json' }
-        });
-        
-        if (response.ok) {
-          console.log(`✅ Found VulnerabilityReport with name: ${resourceName}`);
-          return testUrl;
-        } else {
-          console.log(`❌ Not found: ${resourceName} (${response.status})`);
-        }
-      } catch (error) {
-        console.log(`💥 Error testing ${resourceName}:`, error);
-      }
-    }
-    
-    // Se nenhum funcionar, retorna o primeiro
-    console.log(`⚠️ No VulnerabilityReport found, using default`);
-    return `${baseURI}?name=${kind}-${name}-${container}&namespace=${resourceNamespace}&resourceName=${kind}-${name}-${container}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`;
-  };
+  } else if (isCronJob) {
+    const tmpl = resource?.spec?.jobTemplate?.spec?.template?.spec;
+    containers = [
+      ...(tmpl?.containers ?? []),
+      ...(tmpl?.initContainers ?? []),
+    ];
+  } else {
+    const tmpl = resource?.spec?.template?.spec;
+    containers = [
+      ...(tmpl?.containers ?? []),
+      ...(tmpl?.initContainers ?? []),
+    ];
+  }
 
+  const containerNames = containers.map(c => c?.name).filter(Boolean);
+  const images = containers.map(c => c?.image).filter(Boolean);
+  const [containerName, setContainerName] = useState(containerNames[0] || '');
+  const [currentTabIndex, setCurrentTabIndex] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
   const [reportUrl, setReportUrl] = useState('');
 
-  let containers = []
-  if(isPod) {
-    containers = [...resource?.spec?.containers, ...resource.spec?.initContainers ?? []]
-  } else if (isCronJob) {
-    containers = [...resource?.spec?.jobTemplate?.spec?.template?.spec.containers, ...resource?.spec?.jobTemplate?.spec?.template?.spec.initContainers ?? []]
-  } else {
-    containers = [...resource?.spec?.template?.spec.containers, ...resource?.spec?.template?.spec.initContainers ?? []]
-  }
-    
-  const containerNames = containers.map(c => c.name)  
-  const images = containers.map(c => c.image)  
+  const baseURI = `${window.location.origin}/api/v1/applications/${encodeURIComponent(appName)}`;
 
-  const [currentTabIndex, setCurrentTabIndex] = useState(0);
-  const [isLoading, setIsLoading] = useState(false); // Começa como false para não mostrar loading desnecessário
-  
-  const handleTabChange = (_e, tabIndex) => {
-    setCurrentTabIndex(tabIndex);
+  // Busca na árvore de recursos do app e tenta casar um VulnerabilityReport no namespace
+  const discoverReportViaTree = async () => {
+    const treeUrl = `${baseURI}/resource-tree`;
+    console.log('🌳 Fetching resource-tree:', treeUrl);
+
+    const res = await fetch(treeUrl, { headers: { Accept: 'application/json' } });
+    if (!res.ok) {
+      console.warn('resource-tree fetch failed:', res.status);
+      return null;
+    }
+    const data = await res.json();
+
+    // Argo retorna nós em data.nodes (ou data?.nodes), mantendo retrocompatibilidade
+    const nodes = data?.nodes || data?.resourceTree?.nodes || [];
+    const vrNodes = nodes.filter(n =>
+      (n.group === 'aquasecurity.github.io') &&
+      (String(n.kind).toLowerCase() === 'vulnerabilityreport') &&
+      (n.namespace === resourceNamespace)
+    );
+
+    if (vrNodes.length === 0) {
+      console.log('Nenhum VulnerabilityReport no namespace na árvore.');
+      return null;
+    }
+
+    // Heurística de matching:
+    // 1) tenta nome exato "kind-lowercase + '-' + resourceName"
+    const kindLower = String(resourceKind || '').toLowerCase();
+    const expected1 = `${kindLower}-${resourceName}`; // ex: replicaset-shipay-...-66fb4b695f
+    // 2) tenta apenas o HASH final do RS (ex: replicaset-66fb4b695f)
+    const hash = lastBlock(baseNameRaw || resourceName);
+    const expected2 = `${kindLower}-${hash}`;
+
+    // 3) também aceita qualquer VR que contenha o hash
+    const byExact = vrNodes.find(n => n.name === expected1)
+      || vrNodes.find(n => n.name === expected2);
+
+    if (byExact) {
+      console.log('🎯 VR por nome esperado:', byExact.name);
+      return byExact.name;
+    }
+
+    const byHash = vrNodes.find(n => n.name?.includes(hash));
+    if (byHash) {
+      console.log('🎯 VR por hash:', byHash.name);
+      return byHash.name;
+    }
+
+    // 4) fallback: primeiro VR do namespace (não ideal, mas evita 404)
+    console.log('⚠️ Nenhum match por nome/hash; usando primeiro VR do namespace:', vrNodes[0]?.name);
+    return vrNodes[0]?.name || null;
   };
 
-  // Effect para tentar encontrar o recurso correto na inicialização
-  useEffect(() => {
-    let isMounted = true; // Flag para evitar state updates em componentes desmontados
-    
-    const findCorrectResource = async () => {
-      console.log(`🚀 DEBUG: Starting findCorrectResource`);
-      console.log(`🚀 DEBUG: resourceKind=${resourceKind}, resourceName=${resourceName}, containerName=${containerName}`);
-      console.log(`🚀 DEBUG: resourceNamespace=${resourceNamespace}`);
-      
-      // Sempre tenta o fallback para encontrar o VulnerabilityReport correto
-      setIsLoading(true);
-      try {
-        console.log(`🚀 DEBUG: Calling tryResourceNames...`);
-        const correctUrl = await tryResourceNames(resourceKind, resourceName, containerName);
-        console.log(`🚀 DEBUG: tryResourceNames returned: ${correctUrl}`);
-        if (isMounted) {
-          setReportUrl(correctUrl);
-          console.log(`🚀 DEBUG: reportUrl updated to: ${correctUrl}`);
-        }
-      } catch (error) {
-        console.error('🚀 DEBUG: Error finding correct resource:', error);
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-          console.log(`🚀 DEBUG: Loading finished`);
-        }
-      }
-    };
+  // Monta a URL final do Argo para UM resource específico
+  const buildReportUrl = (vrName) => {
+    const p = new URLSearchParams({
+      name: vrName,
+      namespace: resourceNamespace,
+      resourceName: vrName,
+      version: 'v1alpha1',
+      kind: 'VulnerabilityReport',
+      group: 'aquasecurity.github.io'
+    });
+    return `${baseURI}/resource?${p.toString()}`;
+  };
 
-    findCorrectResource();
-    
-    // Cleanup function
-    return () => {
-      isMounted = false;
-    };
-  }, [resourceKind, resourceName, containerName, resourceNamespace]);
-
-  const onOptionChangeHandler = async (event) => {
-    const newContainerName = event.target.value;
-    console.log(`🚀 DEBUG: onOptionChangeHandler called with container: ${newContainerName}`);
-    setContainerName(newContainerName);
-    
-    // Sempre tenta o fallback para encontrar o VulnerabilityReport correto
+  const tryResolveReport = async () => {
     setIsLoading(true);
     try {
-      console.log(`🚀 DEBUG: Calling tryResourceNames from handler...`);
-      const correctUrl = await tryResourceNames(resourceKind, resourceName, newContainerName);
-      console.log(`🚀 DEBUG: Handler got URL: ${correctUrl}`);
-      setReportUrl(correctUrl);
-    } catch (error) {
-      console.error('🚀 DEBUG: Handler error finding correct resource:', error);
+      // 1) tenta achar via árvore
+      const vrName = await discoverReportViaTree();
+      if (vrName) {
+        const url = buildReportUrl(vrName);
+        console.log('✅ resolved reportUrl:', url);
+        setReportUrl(url);
+        return;
+      }
+
+      // 2) fallback por padrões (se árvore falhar)
+      const kindLower = String(resourceKind || '').toLowerCase();
+      const hash = lastBlock(baseNameRaw || resourceName);
+      const candidates = [
+        `${kindLower}-${resourceName}`,
+        `${kindLower}-${hash}`,
+        `${kindLower}-${resourceName.substring(0, 20)}`,
+        `${kindLower}-${resourceName.substring(0, 10)}`,
+      ];
+      for (const vr of candidates) {
+        const url = buildReportUrl(vr);
+        const r = await fetch(url, { headers: { Accept: 'application/json' } });
+        if (r.ok) {
+          console.log('✅ fallback OK com', vr);
+          setReportUrl(url);
+          return;
+        }
+      }
+
+      console.warn('❌ Nenhum VulnerabilityReport encontrado por heurística.');
+      setReportUrl('');
+    } catch (e) {
+      console.error('💥 tryResolveReport error:', e);
+      setReportUrl('');
     } finally {
       setIsLoading(false);
-      console.log(`🚀 DEBUG: Handler loading finished`);
     }
   };
+
+  useEffect(() => {
+    tryResolveReport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appName, resourceNamespace, resourceKind, resourceName, containerName]);
+
+  const onOptionChangeHandler = async (e) => {
+    const newContainerName = e.target.value;
+    setContainerName(newContainerName);
+    // não muda a heurística do nome do VR, mas re-dispara busca p/ consistência
+    await tryResolveReport();
+  };
+
+  const handleTabChange = (_e, tabIndex) => setCurrentTabIndex(tabIndex);
 
   return (
     <div>
-      <React.Fragment>
-        <select className="vulnerability-report__container_dropdown" onChange={onOptionChangeHandler} disabled={isLoading}>
-          {containerNames.map((container, index) => {
-            return (<option key={index} value={container}>{`${container} (${images[index]})`}</option>)
-          })}
-        </select>
-        {isLoading && (
-          <div style={{ padding: '10px', textAlign: 'center', color: '#666' }}>
-            Carregando relatório de vulnerabilidades...
-          </div>
-        )}
-        <Tabs value={currentTabIndex} onChange={handleTabChange}>
-          <Tab label='Table' />
-          <Tab label='Dashboard' />
-        </Tabs>
-        {!isLoading && currentTabIndex === 0 && (
-          <DataGrid reportUrl={reportUrl} />
-        )}
-        {!isLoading && currentTabIndex === 1 && (
-          <Dashboard reportUrl={reportUrl} />
-        )}
-      </React.Fragment>
+      <select
+        className="vulnerability-report__container_dropdown"
+        onChange={onOptionChangeHandler}
+        disabled={isLoading || containerNames.length <= 1}
+        value={containerName}
+      >
+        {containerNames.map((container, i) => (
+          <option key={container} value={container}>
+            {container}{images[i] ? ` (${images[i]})` : ''}
+          </option>
+        ))}
+      </select>
+
+      {isLoading && (
+        <div style={{ padding: 10, textAlign: 'center', color: '#666' }}>
+          Carregando relatório de vulnerabilidades...
+        </div>
+      )}
+
+      <Tabs value={currentTabIndex} onChange={handleTabChange}>
+        <Tab label="Table" />
+        <Tab label="Dashboard" />
+      </Tabs>
+
+      {!isLoading && currentTabIndex === 0 && reportUrl && (
+        <DataGrid reportUrl={reportUrl} />
+      )}
+      {!isLoading && currentTabIndex === 1 && reportUrl && (
+        <Dashboard reportUrl={reportUrl} />
+      )}
+      {!isLoading && !reportUrl && (
+        <div style={{ padding: 10, color: '#b00' }}>
+          Não foi possível localizar o VulnerabilityReport para este recurso.
+        </div>
+      )}
     </div>
   );
 };
 
 const component = Extension;
 
+// Registre também em Deployment se quiser ver na view do Deployment
 ((window) => {
-  window?.extensionsAPI?.registerResourceExtension(
-    component,
-    "*",
-    "ReplicaSet",
-    "Vulnerabilities",
-    { icon: "fa fa-triangle-exclamation" }
-  );
-  window?.extensionsAPI?.registerResourceExtension(component, '', 'Pod', 'Vulnerabilities', { icon: "fa fa-triangle-exclamation" });
-  window?.extensionsAPI?.registerResourceExtension(component, '*', 'StatefulSet', 'Vulnerabilities', { icon: "fa fa-triangle-exclamation" });
-  window?.extensionsAPI?.registerResourceExtension(component, '*', 'CronJob', 'Vulnerabilities', { icon: "fa fa-triangle-exclamation" });
+  const opts = { icon: "fa fa-triangle-exclamation" };
+  window?.extensionsAPI?.registerResourceExtension(component, '*', 'ReplicaSet', 'Vulnerabilities', opts);
+  window?.extensionsAPI?.registerResourceExtension(component, '*', 'Pod', 'Vulnerabilities', opts);
+  window?.extensionsAPI?.registerResourceExtension(component, '*', 'StatefulSet', 'Vulnerabilities', opts);
+  window?.extensionsAPI?.registerResourceExtension(component, '*', 'CronJob', 'Vulnerabilities', opts);
+  window?.extensionsAPI?.registerResourceExtension(component, '*', 'Deployment', 'Vulnerabilities', opts); // opcional
 })(window);
