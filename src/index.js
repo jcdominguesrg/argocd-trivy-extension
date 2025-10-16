@@ -56,19 +56,71 @@ const Extension = (props) => {
   // Função para gerar nomes de recurso (completo e truncado) - DEPRECATED
   // REMOVIDA - não está sendo usada mais
   
-  // Função simplificada - agora que corrigimos o nome na origem
+  // Função para descobrir o VulnerabilityReport real
   const tryResourceNames = async (kind, name, container) => {
-    console.log(`🚀🚀🚀 V0.3.9 - SIMPLIFIED SEARCH (NAME ALREADY FIXED) 🚀🚀🚀`);
+    console.log(`🚀🚀🚀 V0.3.9 - DYNAMIC DISCOVERY SEARCH 🚀🚀🚀`);
     console.log(`🚀 VERSION: ${window.EXTENSION_VERSION}`);
-    console.log(`🔍 Using fixed name directly:`, { kind, name, container });
+    console.log(`🔍 Discovering real VulnerabilityReport name for:`, { kind, name, container });
     
-    // Agora que o nome foi corrigido na origem, tentamos apenas algumas variações
+    // Primeiro, tenta listar todos os VulnerabilityReports no namespace
+    try {
+      console.log(`🔍 Step 1: Listing all VulnerabilityReports in namespace: ${resourceNamespace}`);
+      const listUrl = `${baseURI}?namespace=${resourceNamespace}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`;
+      
+      const listResponse = await fetch(listUrl, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      if (listResponse.ok) {
+        const listData = await listResponse.json();
+        console.log(`📋 Found VulnerabilityReports:`, listData);
+        
+        if (listData.items && listData.items.length > 0) {
+          console.log(`📋 All VulnerabilityReports found:`, listData.items.map(item => item.metadata.name));
+          
+          // Procura por VulnerabilityReports que contenham partes do nome da aplicação
+          const matchingReports = listData.items.filter(item => {
+            const reportName = item.metadata?.name || '';
+            const appNameLower = appName.toLowerCase();
+            const resourceNameLower = resourceName.toLowerCase();
+            
+            // Procura por correspondências inteligentes
+            return reportName.toLowerCase().includes(appNameLower) || 
+                   reportName.toLowerCase().includes(resourceNameLower) ||
+                   reportName.toLowerCase().includes(kind.toLowerCase()) ||
+                   // Procura por padrões de hash (últimos 10 caracteres)
+                   reportName.toLowerCase().includes(name.substring(name.length - 10).toLowerCase());
+          });
+          
+          if (matchingReports.length > 0) {
+            console.log(`✅ Found matching VulnerabilityReports:`, matchingReports.map(r => r.metadata.name));
+            const firstMatch = matchingReports[0];
+            const realName = firstMatch.metadata.name;
+            
+            const finalUrl = `${baseURI}?name=${realName}&namespace=${resourceNamespace}&resourceName=${realName}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`;
+            console.log(`🎯 Using real VulnerabilityReport: ${realName}`);
+            return finalUrl;
+          } else {
+            console.log(`❌ No matching VulnerabilityReports found for app: ${appName}, resource: ${resourceName}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.log(`💥 Error listing VulnerabilityReports:`, error);
+    }
+    
+    // Fallback: tenta nomes baseados nos padrões conhecidos
+    console.log(`🔍 Step 2: Trying known patterns`);
     const possibleNames = [
       `${kind}-${name}`,                    // Nome corrigido
       `${kind}-${name}-${container}`,       // Com container
+      `${kind}-${name.substring(0, 20)}`,   // Truncado
+      `${kind}-${name.substring(0, 10)}`,   // Primeiros 10 caracteres
+      `${kind}-${name.substring(name.length - 10)}`, // Últimos 10 caracteres
     ];
     
-    console.log(`🎯 Trying fixed names:`, possibleNames);
+    console.log(`🎯 Trying fallback names:`, possibleNames);
     
     for (const resourceName of possibleNames) {
       const testUrl = `${baseURI}?name=${resourceName}&namespace=${resourceNamespace}&resourceName=${resourceName}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`;
@@ -81,7 +133,7 @@ const Extension = (props) => {
         });
         
         if (response.ok) {
-          console.log(`✅ Found VulnerabilityReport with fixed name: ${resourceName}`);
+          console.log(`✅ Found VulnerabilityReport with name: ${resourceName}`);
           return testUrl;
         } else {
           console.log(`❌ Not found: ${resourceName} (${response.status})`);
