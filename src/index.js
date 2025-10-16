@@ -4,66 +4,99 @@ import { Tab, Tabs } from "@mui/material";
 import DataGrid from './components/grid/vulnerability-report';
 import Dashboard from './components/dashboard/dashboard';
 
+// FORCE RELOAD - VERSION 0.3.9 - COMPLETE REWRITE
+window.EXTENSION_VERSION = '0.3.9-FORCE-RELOAD';
+
+// Função inteligente para corrigir nomes truncados
+const fixName = (name) => {
+  console.log(`🔧 V0.3.9 - FIXING NAME: ${name}`);
+  
+  // Se o nome original tiver mais de 63 caracteres e contiver um hash no final
+  const match = name.match(/(.+)-([a-z0-9]{7,10})$/);
+  if (match) {
+    // Mantém apenas o prefixo + hash, removendo o excesso do meio
+    const base = match[1].split('-').slice(0, 3).join('-'); // pega só primeiros 3 blocos
+    const fixedName = `${base}-${match[2]}`.slice(0, 63);
+    console.log(`✅ V0.3.9 - FIXED NAME: ${name} -> ${fixedName}`);
+    return fixedName;
+  }
+  
+  const truncatedName = name.slice(0, 63);
+  console.log(`✂️ V0.3.9 - TRUNCATED NAME: ${name} -> ${truncatedName}`);
+  return truncatedName;
+};
+
 const Extension = (props) => {
+  console.log(`🚀🚀🚀 EXTENSION V0.3.9 - COMPLETE REWRITE - FORCE RELOAD 🚀🚀🚀`);
+  console.log(`🚀 VERSION: ${window.EXTENSION_VERSION}`);
+  console.log(`🚀 DEBUG: Extension component started`);
+  console.log(`🚀 DEBUG: Props:`, props);
 
   const { resource, application } = props;
   const appName = application?.metadata?.name || "";
   const resourceNamespace = resource?.metadata?.namespace || "";
-  const isPod = resource?.kind === "Pod"
-  const isCronJob = resource?.kind === "CronJob"
-  const resourceName = isPod ? resource?.metadata?.ownerReferences[0].name.toLowerCase() : resource?.metadata?.name;
+  const isPod = resource?.kind === "Pod";
+  const isCronJob = resource?.kind === "CronJob";
+  const resourceName = fixName(isPod ? resource?.metadata?.ownerReferences[0].name.toLowerCase() : resource?.metadata?.name);
   const resourceKind = isPod ? resource?.metadata?.ownerReferences[0].kind.toLowerCase() : resource?.kind?.toLowerCase();
+  
+  console.log(`🚀 DEBUG: Extracted values:`, {
+    appName,
+    resourceNamespace,
+    isPod,
+    isCronJob,
+    resourceName,
+    resourceKind
+  });
 
   const [containerName, setContainerName] = useState(isPod ? resource?.spec?.containers[0]?.name : isCronJob ? resource?.spec?.jobTemplate?.spec?.template?.spec.containers[0]?.name : resource?.spec?.template?.spec?.containers[0]?.name);
 
   const baseURI = `${window.location.origin}/api/v1/applications/${appName}/resource`
   
-  // Função para gerar nomes de recurso (completo e truncado)
-  const generateResourceNames = (kind, name, container) => {
-    const fullName = `${kind}-${name}-${container}`;
-    const truncatedName = fullName.length > 63 ? fullName.substring(0, 63) : fullName;
-    
-    return {
-      fullName,
-      truncatedName,
-      isTruncated: fullName.length > 63
-    };
-  };
-
-  const resourceNames = generateResourceNames(resourceKind, resourceName, containerName);
+  // Função para gerar nomes de recurso (completo e truncado) - DEPRECATED
+  // REMOVIDA - não está sendo usada mais
   
-  // Função para tentar diferentes variações do nome do recurso
+  // Função simplificada - agora que corrigimos o nome na origem
   const tryResourceNames = async (kind, name, container) => {
-    const names = generateResourceNames(kind, name, container);
-    const possibleNames = [names.fullName, names.truncatedName];
+    console.log(`🚀🚀🚀 V0.3.9 - SIMPLIFIED SEARCH (NAME ALREADY FIXED) 🚀🚀🚀`);
+    console.log(`🚀 VERSION: ${window.EXTENSION_VERSION}`);
+    console.log(`🔍 Using fixed name directly:`, { kind, name, container });
     
-    // Remove duplicatas se o nome não foi truncado
-    const uniqueNames = [...new Set(possibleNames)];
+    // Agora que o nome foi corrigido na origem, tentamos apenas algumas variações
+    const possibleNames = [
+      `${kind}-${name}`,                    // Nome corrigido
+      `${kind}-${name}-${container}`,       // Com container
+    ];
     
-    for (const resourceName of uniqueNames) {
+    console.log(`🎯 Trying fixed names:`, possibleNames);
+    
+    for (const resourceName of possibleNames) {
       const testUrl = `${baseURI}?name=${resourceName}&namespace=${resourceNamespace}&resourceName=${resourceName}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`;
       
       try {
-        // Tenta primeiro com GET (mais compatível que HEAD)
+        console.log(`🔗 Testing: ${testUrl}`);
         const response = await fetch(testUrl, { 
           method: 'GET',
           headers: { 'Accept': 'application/json' }
         });
         
         if (response.ok) {
+          console.log(`✅ Found VulnerabilityReport with fixed name: ${resourceName}`);
           return testUrl;
+        } else {
+          console.log(`❌ Not found: ${resourceName} (${response.status})`);
         }
       } catch (error) {
-        // Continue tentando com o próximo nome
-        console.log(`Failed to find resource with name: ${resourceName}`);
+        console.log(`💥 Error testing ${resourceName}:`, error);
       }
     }
     
-    // Se nenhum funcionar, retorna o primeiro (nome completo)
-    return `${baseURI}?name=${names.fullName}&namespace=${resourceNamespace}&resourceName=${names.fullName}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`;
+    // Se nenhum funcionar, retorna o primeiro
+    console.log(`⚠️ No VulnerabilityReport found, using default`);
+    return `${baseURI}?name=${kind}-${name}-${container}&namespace=${resourceNamespace}&resourceName=${kind}-${name}-${container}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`;
   };
 
-  let [reportUrl, setReportUrl] = useState(`${baseURI}?name=${resourceNames.fullName}&namespace=${resourceNamespace}&resourceName=${resourceNames.fullName}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`);
+  const [reportUrl, setReportUrl] = useState('');
 
   let containers = []
   if(isPod) {
@@ -89,25 +122,28 @@ const Extension = (props) => {
     let isMounted = true; // Flag para evitar state updates em componentes desmontados
     
     const findCorrectResource = async () => {
-      // Só ativa o fallback se o nome for muito longo (potencialmente truncado)
-      const names = generateResourceNames(resourceKind, resourceName, containerName);
+      console.log(`🚀 DEBUG: Starting findCorrectResource`);
+      console.log(`🚀 DEBUG: resourceKind=${resourceKind}, resourceName=${resourceName}, containerName=${containerName}`);
+      console.log(`🚀 DEBUG: resourceNamespace=${resourceNamespace}`);
       
-      if (names.isTruncated) {
-        setIsLoading(true);
-        try {
-          const correctUrl = await tryResourceNames(resourceKind, resourceName, containerName);
-          if (isMounted) {
-            setReportUrl(correctUrl);
-          }
-        } catch (error) {
-          console.error('Error finding correct resource:', error);
-        } finally {
-          if (isMounted) {
-            setIsLoading(false);
-          }
+      // Sempre tenta o fallback para encontrar o VulnerabilityReport correto
+      setIsLoading(true);
+      try {
+        console.log(`🚀 DEBUG: Calling tryResourceNames...`);
+        const correctUrl = await tryResourceNames(resourceKind, resourceName, containerName);
+        console.log(`🚀 DEBUG: tryResourceNames returned: ${correctUrl}`);
+        if (isMounted) {
+          setReportUrl(correctUrl);
+          console.log(`🚀 DEBUG: reportUrl updated to: ${correctUrl}`);
+        }
+      } catch (error) {
+        console.error('🚀 DEBUG: Error finding correct resource:', error);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+          console.log(`🚀 DEBUG: Loading finished`);
         }
       }
-      // Se o nome não foi truncado, mantém o comportamento original (sem loading)
     };
 
     findCorrectResource();
@@ -120,32 +156,28 @@ const Extension = (props) => {
 
   const onOptionChangeHandler = async (event) => {
     const newContainerName = event.target.value;
+    console.log(`🚀 DEBUG: onOptionChangeHandler called with container: ${newContainerName}`);
     setContainerName(newContainerName);
     
-    // Só ativa o fallback se o nome for muito longo (potencialmente truncado)
-    const names = generateResourceNames(resourceKind, resourceName, newContainerName);
-    
-    if (names.isTruncated) {
-      setIsLoading(true);
-      try {
-        const correctUrl = await tryResourceNames(resourceKind, resourceName, newContainerName);
-        setReportUrl(correctUrl);
-      } catch (error) {
-        console.error('Error finding correct resource:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    } else {
-      // Comportamento original para nomes curtos
-      const newResourceNames = generateResourceNames(resourceKind, resourceName, newContainerName);
-      setReportUrl(`${baseURI}?name=${newResourceNames.fullName}&namespace=${resourceNamespace}&resourceName=${newResourceNames.fullName}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`);
+    // Sempre tenta o fallback para encontrar o VulnerabilityReport correto
+    setIsLoading(true);
+    try {
+      console.log(`🚀 DEBUG: Calling tryResourceNames from handler...`);
+      const correctUrl = await tryResourceNames(resourceKind, resourceName, newContainerName);
+      console.log(`🚀 DEBUG: Handler got URL: ${correctUrl}`);
+      setReportUrl(correctUrl);
+    } catch (error) {
+      console.error('🚀 DEBUG: Handler error finding correct resource:', error);
+    } finally {
+      setIsLoading(false);
+      console.log(`🚀 DEBUG: Handler loading finished`);
     }
   };
 
   return (
     <div>
       <React.Fragment>
-        <select class="vulnerability-report__container_dropdown" onChange={onOptionChangeHandler} disabled={isLoading}>
+        <select className="vulnerability-report__container_dropdown" onChange={onOptionChangeHandler} disabled={isLoading}>
           {containerNames.map((container, index) => {
             return (<option key={index} value={container}>{`${container} (${images[index]})`}</option>)
           })}
