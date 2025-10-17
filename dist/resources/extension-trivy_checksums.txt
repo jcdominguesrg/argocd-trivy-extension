@@ -1,1 +1,1 @@
-61993c0b1e0fc2ad505308687bef13a9cd2e4f073571bbfcd591cd95804ea1e0  dist/resources/extension-trivy.tar
+12402209e4938ac3cab5f43207371be87a50ad8fbf744ce362e583d68c70fd31  dist/resources/extension-trivy.tar

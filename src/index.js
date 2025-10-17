@@ -5,11 +5,12 @@ import DataGrid from './components/grid/vulnerability-report';
 import Dashboard from './components/dashboard/dashboard';
 
 // Version bump for cache invalidation
-window.EXTENSION_VERSION = '0.3.14';
+window.EXTENSION_VERSION = '0.3.15';
 
 const Extension = (props) => {
   const { resource, application } = props;
   const appName = application?.metadata?.name || "";
+  const appNamespace = application?.metadata?.namespace || 'argo';
   const resourceNamespace = resource?.metadata?.namespace || "";
   const isPod = resource?.kind === "Pod";
   const isCronJob = resource?.kind === "CronJob";
@@ -30,7 +31,7 @@ const Extension = (props) => {
   const [reportUrl, setReportUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const baseURI = `${window.location.origin}/api/v1/applications/${appName}/resource`;
+  const baseURI = `${window.location.origin}/api/v1/applications/${encodeURIComponent(appName)}/resource`;
 
   // Monta lista segura de containers (sem undefined)
   let containers = [];
@@ -57,37 +58,50 @@ const Extension = (props) => {
   const images = containers.map(c => c?.image).filter(Boolean);
   const [currentTabIndex, setCurrentTabIndex] = useState(0);
 
+  // Build URL helper with proper encoding
+  const buildUrl = (name) => 
+    `${baseURI}?name=${encodeURIComponent(name)}&namespace=${encodeURIComponent(resourceNamespace)}&resourceName=${encodeURIComponent(name)}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io&appNamespace=${encodeURIComponent(appNamespace)}`;
+
   // Heurística reforçada de descoberta
   const tryResourceNames = async (kind, name, container) => {
     if (!name) return '';
     
     const hash = name.split('-').slice(-1)[0]; // último bloco do nome (hash)
     const shortName = name.slice(0, 63);
+    const k = kind.toLowerCase();
 
-    const patterns = [
-      `${kind}-${name}`,                    // replicaset-shipay-app-sample-python-b3-798c766556
-      `${kind}-${shortName}`,               // nome truncado
-      `${kind}-${hash}`,                    // replicaset-798c766556
-      `${name}`,                            // shipay-app-sample-python-b3-798c766556
-      `${name}-${container}`,               // shipay-app-sample-python-b3-798c766556-api
-      `${kind}-${name}-${container}`,       // replicaset-shipay-app-sample-python-b3-798c766556-api
+    const candidates = [
+      `${k}-${name}`,                    // replicaset-shipay-app-sample-python-b3-798c766556
+      `${k}-${shortName}`,               // nome truncado
+      `${k}-${hash}`,                    // replicaset-798c766556
+      `${name}`,                         // shipay-app-sample-python-b3-798c766556
+      `${name}-${container}`,            // shipay-app-sample-python-b3-798c766556-api
+      `${k}-${name}-${container}`,       // replicaset-shipay-app-sample-python-b3-798c766556-api
     ];
 
-    for (const pattern of patterns) {
-      const testUrl = `${baseURI}?name=${pattern}&namespace=${resourceNamespace}&resourceName=${pattern}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io`;
+    console.log(`[Trivy Extension] Trying ${candidates.length} patterns for: kind=${kind}, name=${name}, container=${container}`);
+    console.log(`[Trivy Extension] Hash extracted: ${hash}`);
+    console.log(`[Trivy Extension] Short name: ${shortName}`);
+    console.log(`[Trivy Extension] App namespace: ${appNamespace}`);
+
+    for (const candidate of candidates) {
+      const url = buildUrl(candidate);
       
       try {
-        const response = await fetch(testUrl, { 
+        console.log(`[Trivy Extension] Testing pattern: ${candidate}`);
+        const response = await fetch(url, { 
           method: 'GET',
           headers: { 'Accept': 'application/json' }
         });
         
+        console.log(`[Trivy Extension] Response for ${candidate}: ${response.status} ${response.statusText}`);
+        
         if (response.ok) {
-          console.log(`✅ [Trivy Extension] Found VulnerabilityReport: ${pattern}`);
-          return testUrl;
+          console.log(`✅ [Trivy Extension] Found VulnerabilityReport: ${candidate}`);
+          return url;
         }
       } catch (error) {
-        console.log(`⚠️ [Trivy Extension] Error testing ${pattern}`, error);
+        console.log(`⚠️ [Trivy Extension] Error testing ${candidate}:`, error);
       }
     }
 
@@ -157,10 +171,10 @@ const Extension = (props) => {
       </Tabs>
 
       {!isLoading && currentTabIndex === 0 && reportUrl && (
-        <DataGrid reportUrl={reportUrl} />
+        <DataGrid key={reportUrl} reportUrl={reportUrl} />
       )}
       {!isLoading && currentTabIndex === 1 && reportUrl && (
-        <Dashboard reportUrl={reportUrl} />
+        <Dashboard key={reportUrl} reportUrl={reportUrl} />
       )}
       {!isLoading && !reportUrl && (
         <div style={{ padding: '10px', color: '#b00' }}>
@@ -175,9 +189,9 @@ const component = Extension;
 
 ((window) => {
   const opts = { icon: "fa fa-triangle-exclamation" };
+  window?.extensionsAPI?.registerResourceExtension(component, "*", "Deployment", "Vulnerabilities", opts);
   window?.extensionsAPI?.registerResourceExtension(component, "*", "ReplicaSet", "Vulnerabilities", opts);
   window?.extensionsAPI?.registerResourceExtension(component, "*", "Pod", "Vulnerabilities", opts);
   window?.extensionsAPI?.registerResourceExtension(component, "*", "StatefulSet", "Vulnerabilities", opts);
   window?.extensionsAPI?.registerResourceExtension(component, "*", "CronJob", "Vulnerabilities", opts);
-  window?.extensionsAPI?.registerResourceExtension(component, "*", "Deployment", "Vulnerabilities", opts);
 })(window);
