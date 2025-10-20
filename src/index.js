@@ -5,7 +5,7 @@ import DataGrid from './components/grid/vulnerability-report';
 import Dashboard from './components/dashboard/dashboard';
 
 // Version bump for cache invalidation
-window.EXTENSION_VERSION = '0.3.15';
+window.EXTENSION_VERSION = '0.3.16';
 
 const Extension = (props) => {
   const { resource, application } = props;
@@ -57,57 +57,200 @@ const Extension = (props) => {
   const containerNames = containers.map(c => c?.name).filter(Boolean);
   const images = containers.map(c => c?.image).filter(Boolean);
   const [currentTabIndex, setCurrentTabIndex] = useState(0);
+  const [metricsAvailable, setMetricsAvailable] = useState(true);
 
   // Build URL helper with proper encoding
   const buildUrl = (name) => 
     `${baseURI}?name=${encodeURIComponent(name)}&namespace=${encodeURIComponent(resourceNamespace)}&resourceName=${encodeURIComponent(name)}&version=v1alpha1&kind=VulnerabilityReport&group=aquasecurity.github.io&appNamespace=${encodeURIComponent(appNamespace)}`;
 
   // Heurística reforçada de descoberta
-  const tryResourceNames = async (kind, name, container) => {
-    if (!name) return '';
+const tryResourceNames = async (kind, name, container) => {
+  if (!name) return '';
+  
+  const k = kind.toLowerCase();
+  console.log(`[Trivy Extension] Listing VulnerabilityReports for: kind=${kind}, name=${name}, container=${container}`);
+  console.log(`[Trivy Extension] App namespace: ${appNamespace}`);
+
+  try {
+    // Primeiro: LISTAR todos os VulnerabilityReports do namespace
+    const listUrl = `${baseURI}?namespace=${encodeURIComponent(resourceNamespace)}&group=aquasecurity.github.io&version=v1alpha1&kind=VulnerabilityReport&appNamespace=${encodeURIComponent(appNamespace)}`;
     
-    const hash = name.split('-').slice(-1)[0]; // último bloco do nome (hash)
-    const shortName = name.slice(0, 63);
-    const k = kind.toLowerCase();
+    console.log(`[Trivy Extension] Listing URL: ${listUrl}`);
+    
+    const listResponse = await fetch(listUrl, { 
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    });
+    
+    console.log(`[Trivy Extension] List response: ${listResponse.status} ${listResponse.statusText}`);
+    
+    if (!listResponse.ok) {
+      console.log(`[Trivy Extension] Failed to list VulnerabilityReports: ${listResponse.status}`);
+      return '';
+    }
+    
+    const listData = await listResponse.json();
+    console.log(`[Trivy Extension] Found ${listData.items?.length || 0} VulnerabilityReports`);
+    
+    if (!listData.items || listData.items.length === 0) {
+      console.log('[Trivy Extension] No VulnerabilityReports found');
+      return '';
+    }
+    
+    // Segundo: Tentar match por nome concatenado esperado (<kind>-<resourceName>)
+    const resourceUid = resource?.metadata?.uid;
+    const originalResourceName = resource?.metadata?.name || '';
+    const expectedConcatenatedName = `${k}-${originalResourceName}`.toLowerCase();
 
-    const candidates = [
-      `${k}-${name}`,                    // replicaset-shipay-app-sample-python-b3-798c766556
-      `${k}-${shortName}`,               // nome truncado
-      `${k}-${hash}`,                    // replicaset-798c766556
-      `${name}`,                         // shipay-app-sample-python-b3-798c766556
-      `${name}-${container}`,            // shipay-app-sample-python-b3-798c766556-api
-      `${k}-${name}-${container}`,       // replicaset-shipay-app-sample-python-b3-798c766556-api
-    ];
-
-    console.log(`[Trivy Extension] Trying ${candidates.length} patterns for: kind=${kind}, name=${name}, container=${container}`);
-    console.log(`[Trivy Extension] Hash extracted: ${hash}`);
-    console.log(`[Trivy Extension] Short name: ${shortName}`);
-    console.log(`[Trivy Extension] App namespace: ${appNamespace}`);
-
-    for (const candidate of candidates) {
-      const url = buildUrl(candidate);
-      
-      try {
-        console.log(`[Trivy Extension] Testing pattern: ${candidate}`);
-        const response = await fetch(url, { 
-          method: 'GET',
-          headers: { 'Accept': 'application/json' }
-        });
-        
-        console.log(`[Trivy Extension] Response for ${candidate}: ${response.status} ${response.statusText}`);
-        
-        if (response.ok) {
-          console.log(`✅ [Trivy Extension] Found VulnerabilityReport: ${candidate}`);
-          return url;
-        }
-      } catch (error) {
-        console.log(`⚠️ [Trivy Extension] Error testing ${candidate}:`, error);
-      }
+    // Tenta primeiro match exato no metadata.name com o padrão concatenado
+    const concatMatch = listData.items.find(item => (item.metadata?.name || '').toLowerCase() === expectedConcatenatedName);
+    if (concatMatch) {
+      console.log(`[Trivy Extension] Found VulnerabilityReport by concatenated name: ${concatMatch.metadata.name}`);
+      const crName = concatMatch.metadata.name;
+      const detailUrl = `${baseURI}?name=${encodeURIComponent(crName)}&resourceName=${encodeURIComponent(crName)}&namespace=${encodeURIComponent(resourceNamespace)}&group=aquasecurity.github.io&version=v1alpha1&kind=VulnerabilityReport&appNamespace=${encodeURIComponent(appNamespace)}`;
+      console.log(`[Trivy Extension] Detail URL: ${detailUrl}`);
+      console.log(`✅ [Trivy Extension] Found VulnerabilityReport: ${crName}`);
+      return detailUrl;
     }
 
-    console.log('❌ [Trivy Extension] No VulnerabilityReport found');
+    // Segundo: FILTRAR pelas labels do Trivy Operator e heurísticas adicionais
+
+    const matchingReport = listData.items.find(item => {
+      const labels = item.metadata?.labels || {};
+      const ownerRefs = item.metadata?.ownerReferences || [];
+
+      // Preferência: usar labels do Trivy Operator (exatas)
+      const resourceNameMatch = labels['trivy-operator.resource.name'] === name;
+      const containerMatch = labels['trivy-operator.container.name'] === container;
+      const kindMatch = labels['trivy-operator.resource.kind']?.toLowerCase() === k;
+
+      // Alternativa: usar ownerReferences (nome/uid)
+      const ownerNameMatch = ownerRefs.some(ref => ref.name === name && ref.kind?.toLowerCase() === kind.toLowerCase());
+      const ownerUidMatch = resourceUid ? ownerRefs.some(ref => ref.uid === resourceUid) : false;
+
+      // Heurística adicional: verificar nomes parciais / formas encurtadas geradas pelo Trivy
+      const crName = item.metadata?.name || '';
+      const nameIncludesMatch = crName === name || crName.includes(name) || name.includes(crName);
+
+      // Se o label contém o nome parcial
+      const labelIncludesMatch = (labels['trivy-operator.resource.name'] && (labels['trivy-operator.resource.name'] === name || labels['trivy-operator.resource.name'].includes(name) || name.includes(labels['trivy-operator.resource.name'])));
+
+      const isMatch = (resourceNameMatch && containerMatch && kindMatch) || ownerNameMatch || ownerUidMatch || nameIncludesMatch || labelIncludesMatch;
+
+      if (isMatch) {
+        console.log(`[Trivy Extension] Found matching report: ${crName}`);
+        console.log(`[Trivy Extension] Labels:`, labels);
+        console.log(`[Trivy Extension] OwnerRefs:`, ownerRefs);
+      }
+
+      return isMatch;
+    });
+    
+    if (!matchingReport) {
+      console.log('[Trivy Extension] No exact matching VulnerabilityReport found');
+
+      // Logar candidatos para debugging: nomes, labels e ownerRefs
+      let candidates = [];
+      try {
+        candidates = listData.items.map(item => ({
+          name: item.metadata?.name,
+          labels: item.metadata?.labels,
+          ownerRefs: item.metadata?.ownerReferences
+        }));
+        console.log('[Trivy Extension] Available VulnerabilityReports:', candidates);
+      } catch (e) {
+        console.log('[Trivy Extension] Error while listing candidates:', e);
+      }
+
+      // Fallback: pontuar candidatos e escolher o melhor (se passar threshold)
+      const scoreCandidate = (item) => {
+        const labels = item.metadata?.labels || {};
+        const ownerRefs = item.metadata?.ownerReferences || [];
+        const crName = item.metadata?.name || '';
+        let score = 0;
+
+        // alta prioridade: label exata
+        if (labels['trivy-operator.resource.name'] === name) score += 50;
+        // owner uid match
+        if (resourceUid && ownerRefs.some(ref => ref.uid === resourceUid)) score += 40;
+        // container label match
+        if (labels['trivy-operator.container.name'] && container && labels['trivy-operator.container.name'] === container) score += 10;
+        // kind match
+        if (labels['trivy-operator.resource.kind']?.toLowerCase() === k) score += 5;
+        // partial name matches
+        if (crName === name) score += 30;
+        if (crName.includes(name) || name.includes(crName)) score += 20;
+        if (labels['trivy-operator.resource.name'] && (labels['trivy-operator.resource.name'].includes(name) || name.includes(labels['trivy-operator.resource.name']))) score += 15;
+
+        return score;
+      };
+
+      const scored = listData.items.map(item => ({ item, score: scoreCandidate(item) }));
+      scored.sort((a, b) => b.score - a.score);
+
+      const best = scored[0];
+      const THRESHOLD = 30; // mínimo aceitável para considerar um candidato
+
+      if (best && best.score >= THRESHOLD) {
+        const chosen = best.item;
+        console.log(`[Trivy Extension] Fallback selected candidate: ${chosen.metadata.name} with score ${best.score}`);
+        console.log(`[Trivy Extension] Candidate labels:`, chosen.metadata.labels);
+        console.log(`[Trivy Extension] Candidate ownerRefs:`, chosen.metadata.ownerReferences);
+
+        const crName = chosen.metadata.name;
+        const detailUrl = `${baseURI}?name=${encodeURIComponent(crName)}&resourceName=${encodeURIComponent(crName)}&namespace=${encodeURIComponent(resourceNamespace)}&group=aquasecurity.github.io&version=v1alpha1&kind=VulnerabilityReport&appNamespace=${encodeURIComponent(appNamespace)}`;
+        console.log(`[Trivy Extension] Detail URL (fallback): ${detailUrl}`);
+        return detailUrl;
+      }
+
+      console.log('[Trivy Extension] No candidate passed fallback threshold');
+      return '';
+    }
+    
+    // Terceiro: DETALHAR usando o metadata.name real do CR
+    const crName = matchingReport.metadata.name;
+    const detailUrl = `${baseURI}?name=${encodeURIComponent(crName)}&resourceName=${encodeURIComponent(crName)}&namespace=${encodeURIComponent(resourceNamespace)}&group=aquasecurity.github.io&version=v1alpha1&kind=VulnerabilityReport&appNamespace=${encodeURIComponent(appNamespace)}`;
+    
+    console.log(`[Trivy Extension] Detail URL: ${detailUrl}`);
+    console.log(`✅ [Trivy Extension] Found VulnerabilityReport: ${crName}`);
+    
+    return detailUrl;
+    
+  } catch (error) {
+    console.log(`[Trivy Extension] Error listing/filtering VulnerabilityReports:`, error);
     return '';
-  };
+  }
+};
+
+  // Verifica disponibilidade da extensão de métricas do Argo; se indisponível, mostra fallback
+  useEffect(() => {
+    let mounted = true;
+    const checkMetrics = async () => {
+      try {
+        const metricsUrl = `${window.location.origin}/extensions/metrics/api/applications/${encodeURIComponent(appName)}/groupkinds/${encodeURIComponent(resourceKind)}/dashboards?appNamespace=${encodeURIComponent(appNamespace)}`;
+        console.log('[Trivy Extension] Checking metrics endpoint:', metricsUrl);
+        const resp = await fetch(metricsUrl, { method: 'GET', headers: { 'Accept': 'application/json' } });
+        if (!mounted) return;
+        if (!resp.ok) {
+          console.log(`[Trivy Extension] Metrics endpoint not available: ${resp.status} ${resp.statusText}`);
+          setMetricsAvailable(false);
+          // Forçar visualização do Dashboard de vulnerabilidades
+          setCurrentTabIndex(1);
+        } else {
+          setMetricsAvailable(true);
+        }
+      } catch (error) {
+        console.log('[Trivy Extension] Error checking metrics endpoint:', error);
+        if (!mounted) return;
+        setMetricsAvailable(false);
+        setCurrentTabIndex(1);
+      }
+    };
+
+    if (appName && resourceKind) checkMetrics();
+
+    return () => { mounted = false; };
+  }, [appName, resourceKind, appNamespace]);
 
   useEffect(() => {
     const findReport = async () => {
@@ -169,6 +312,12 @@ const Extension = (props) => {
         <Tab label='Table' />
         <Tab label='Dashboard' />
       </Tabs>
+
+      {!metricsAvailable && (
+        <div style={{ margin: '10px 0', padding: '10px', background: '#fff3cd', color: '#856404', borderRadius: '4px' }}>
+          Métricas do Argo indisponíveis (metrics endpoint retornou erro). Mostrando dashboard de vulnerabilidades diretamente a partir do VulnerabilityReport.
+        </div>
+      )}
 
       {!isLoading && currentTabIndex === 0 && reportUrl && (
         <DataGrid key={reportUrl} reportUrl={reportUrl} />
