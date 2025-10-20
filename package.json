@@ -1,6 +1,6 @@
 {
   "name": "argocd-trivy-extension",
-  "version": "0.3.16",
+  "version": "0.4.0",
   "private": true,
   "dependencies": {
     "@emotion/react": "^11.11.4",
@@ -23,8 +23,8 @@
     "os": false
   },
   "scripts": {
-  "start": "react-scripts start",
-  "build": "webpack --config ./webpack.config.js && mkdir -p dist/resources && (cd dist && tar -cvf ../extension-trivy.tar resources) && mv ./extension-trivy.tar ./dist/resources/extension-trivy.tar"
+    "start": "react-scripts start",
+    "build": "webpack --config ./webpack.config.js && mkdir -p dist/resources && (cd dist && tar -cvf ../extension-trivy.tar resources) && mv ./extension-trivy.tar ./dist/resources/extension-trivy.tar"
   },
   "eslintConfig": {
     "extends": [
