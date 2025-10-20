@@ -1,35 +1,17 @@
 import axios from 'axios';
 
-// Cache para evitar requisições desnecessárias
-const cache = new Map();
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+var vulnerabilityData = {}
 
 async function GetVulnerabilityData(reportUrl) {
-  // Verifica cache primeiro
-  const cached = cache.get(reportUrl);
-  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    return cached.data;
-  }
-
   const response = await axios.get(reportUrl)
     .catch(function (error) {
-      console.warn(`No vulnerability report found matching: ${reportUrl}`);
-      return undefined;
+      // console.log(`No vulnerability report found matching: ${reportUrl}`)
     })
 
   if (response === undefined) {
     return []
   }
-  
-  const vulnerabilities = JSON.parse(response?.data?.manifest).report.vulnerabilities;
-  
-  // Armazena no cache
-  cache.set(reportUrl, {
-    data: vulnerabilities,
-    timestamp: Date.now()
-  });
-  
-  return vulnerabilities;
+  return JSON.parse(response?.data?.manifest).report.vulnerabilities;
 }
 
 export async function GridData(reportUrl) {
@@ -52,7 +34,7 @@ export async function GridData(reportUrl) {
 }
 
 export async function DashboardData(reportUrl) {
-  const vulnerabilityData = await GetVulnerabilityData(reportUrl);
+  vulnerabilityData = await GetVulnerabilityData(reportUrl);
 
   if (vulnerabilityData.length === 0) {
     return {
@@ -61,16 +43,16 @@ export async function DashboardData(reportUrl) {
   }
 
   return {
-    severityData: severityCountData(vulnerabilityData),
-    patchSummaryData: patchSummaryData(vulnerabilityData),
-    topVulnerableResourcesData: topVulnerableResourcesData(vulnerabilityData, 15),
-    vulnerabilityAgeDistribution: vulnerabilityAgeDistribution(vulnerabilityData),
-    vulnerabilitiesByType: vulnerabilitiesByType(vulnerabilityData),
+    severityData: severityCountData(),
+    patchSummaryData: patchSummaryData(),
+    topVulnerableResourcesData: topVulnerableResourcesData(15),
+    vulnerabilityAgeDistribution: vulnerabilityAgeDistribution(),
+    vulnerabilitiesByType: vulnerabilitiesByType(),
     noVulnerabilityData: false
   }
 }
 
-function severityCountData(vulnerabilityData) {
+function severityCountData() {
   const data = [];
   [
     "CRITICAL",
@@ -87,7 +69,7 @@ function severityCountData(vulnerabilityData) {
   return data;
 }
 
-function patchSummaryData(vulnerabilityData) {
+function patchSummaryData() {
   const count = (severity, fixed = true) => {
     return vulnerabilityData.filter(v => (fixed ? v.fixedVersion !== "" : v.fixedVersion === "")
       && v.severity === severity).length
@@ -112,7 +94,7 @@ function patchSummaryData(vulnerabilityData) {
   return data;
 }
 
-function topVulnerableResourcesData(vulnerabilityData, size) {
+function topVulnerableResourcesData(size) {
   const data = []
   const resources = new Set()
   vulnerabilityData.forEach(v => { resources.add(v.resource) })
@@ -138,7 +120,7 @@ function topVulnerableResourcesData(vulnerabilityData, size) {
   return data.slice(0, size - 1)
 }
 
-function vulnerabilityAgeDistribution(vulnerabilityData) {
+function vulnerabilityAgeDistribution() {
   const data = []
 
   const count = (severity, year) => {
@@ -162,7 +144,7 @@ function vulnerabilityAgeDistribution(vulnerabilityData) {
   return data
 }
 
-function vulnerabilitiesByType(vulnerabilityData) {
+function vulnerabilitiesByType() {
   const vulnTypes = [
     "Overflow",
     "Memory corruption",
