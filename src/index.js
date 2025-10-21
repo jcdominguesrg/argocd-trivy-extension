@@ -72,6 +72,8 @@ const Extension = (props) => {
       vulnerabilityReports.forEach((report, index) => {
         console.log(`[Trivy Extension] ${index + 1}. ${report.name} (namespace: ${report.namespace})`);
         console.log(`[Trivy Extension]    Labels:`, report.info?.labels || {});
+        console.log(`[Trivy Extension]    Info completo:`, report.info);
+        console.log(`[Trivy Extension]    Report completo:`, report);
       });
       
       // Buscar por labels do Trivy Operator
@@ -94,6 +96,37 @@ const Extension = (props) => {
       
       if (!matchingReport) {
         console.log('[Trivy Extension] Nenhum VulnerabilityReport correspondente encontrado por labels');
+        console.log('[Trivy Extension] Tentando fallback por nome...');
+        
+        // Fallback: tentar match por nome do recurso
+        const fallbackReport = vulnerabilityReports.find(report => {
+          const reportName = report.name.toLowerCase();
+          const resourceNameLower = name.toLowerCase();
+          const containerLower = container.toLowerCase();
+          
+          // Tentar match por partes do nome
+          const nameMatch = reportName.includes(resourceNameLower) || resourceNameLower.includes(reportName);
+          const containerMatch = reportName.includes(containerLower) || containerLower.includes(reportName);
+          
+          if (nameMatch || containerMatch) {
+            console.log(`[Trivy Extension] ✅ Fallback match: ${report.name}`);
+            console.log(`[Trivy Extension]    Nome do recurso: ${resourceNameLower}`);
+            console.log(`[Trivy Extension]    Container: ${containerLower}`);
+            console.log(`[Trivy Extension]    Report name: ${reportName}`);
+            return true;
+          }
+          
+          return false;
+        });
+        
+        if (fallbackReport) {
+          const crName = fallbackReport.name;
+          const detailUrl = `${baseURI}?name=${encodeURIComponent(crName)}&resourceName=${encodeURIComponent(crName)}&namespace=${encodeURIComponent(resourceNamespace)}&group=aquasecurity.github.io&version=v1alpha1&kind=VulnerabilityReport&appNamespace=${encodeURIComponent(application?.metadata?.namespace || 'argo')}`;
+          
+          console.log(`✅ [Trivy Extension] VulnerabilityReport encontrado por fallback: ${crName}`);
+          return detailUrl;
+        }
+        
         return '';
       }
       
