@@ -97,6 +97,8 @@ const Extension = (props) => {
       if (!matchingReport) {
         console.log('[Trivy Extension] Nenhum VulnerabilityReport correspondente encontrado por labels');
         console.log('[Trivy Extension] Tentando fallback por nome...');
+        console.log(`[Trivy Extension] Buscando fallback para: name=${name}, container=${container}`);
+        console.log(`[Trivy Extension] Total de VulnerabilityReports para fallback: ${vulnerabilityReports.length}`);
         
         // Fallback: tentar match por nome do recurso
         const fallbackReport = vulnerabilityReports.find(report => {
@@ -104,9 +106,17 @@ const Extension = (props) => {
           const resourceNameLower = name.toLowerCase();
           const containerLower = container.toLowerCase();
           
+          console.log(`[Trivy Extension] Testando fallback: ${report.name}`);
+          console.log(`[Trivy Extension]    Report name: ${reportName}`);
+          console.log(`[Trivy Extension]    Resource name: ${resourceNameLower}`);
+          console.log(`[Trivy Extension]    Container: ${containerLower}`);
+          
           // Tentar match por partes do nome
           const nameMatch = reportName.includes(resourceNameLower) || resourceNameLower.includes(reportName);
           const containerMatch = reportName.includes(containerLower) || containerLower.includes(reportName);
+          
+          console.log(`[Trivy Extension]    Name match: ${nameMatch}`);
+          console.log(`[Trivy Extension]    Container match: ${containerMatch}`);
           
           if (nameMatch || containerMatch) {
             console.log(`[Trivy Extension] ✅ Fallback match: ${report.name}`);
@@ -124,9 +134,11 @@ const Extension = (props) => {
           const detailUrl = `${baseURI}?name=${encodeURIComponent(crName)}&resourceName=${encodeURIComponent(crName)}&namespace=${encodeURIComponent(resourceNamespace)}&group=aquasecurity.github.io&version=v1alpha1&kind=VulnerabilityReport&appNamespace=${encodeURIComponent(application?.metadata?.namespace || 'argo')}`;
           
           console.log(`✅ [Trivy Extension] VulnerabilityReport encontrado por fallback: ${crName}`);
+          console.log(`✅ [Trivy Extension] URL gerada: ${detailUrl}`);
           return detailUrl;
         }
         
+        console.log('[Trivy Extension] ❌ Nenhum VulnerabilityReport encontrado por fallback');
         return '';
       }
       
@@ -207,7 +219,7 @@ const Extension = (props) => {
             {`${container} (${images[index]})`}
           </option>
         ))}
-      </select>
+        </select>
 
       {isLoading && (
         <div style={{ padding: '10px', textAlign: 'center', color: '#666' }}>
@@ -215,10 +227,10 @@ const Extension = (props) => {
         </div>
       )}
 
-      <Tabs value={currentTabIndex} onChange={handleTabChange}>
-        <Tab label='Table' />
-        <Tab label='Dashboard' />
-      </Tabs>
+        <Tabs value={currentTabIndex} onChange={handleTabChange}>
+          <Tab label='Table' />
+          <Tab label='Dashboard' />
+        </Tabs>
 
       {!isLoading && currentTabIndex === 0 && reportUrl && (
         <DataGrid key={reportUrl} reportUrl={reportUrl} />
