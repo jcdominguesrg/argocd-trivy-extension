@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // Version bump for cache invalidation
-window.EXTENSION_VERSION = '0.2.8';
+window.EXTENSION_VERSION = '0.2.10';
 import './index.css';
 import { Tab, Tabs } from "@mui/material";
 import DataGrid from './components/grid/vulnerability-report';
@@ -109,7 +109,7 @@ const Extension = (props) => {
         console.log(`[Trivy Extension] Buscando fallback para: name=${name}, container=${container}`);
         console.log(`[Trivy Extension] Total de VulnerabilityReports para fallback: ${vulnerabilityReports.length}`);
         
-        // Fallback: tentar match por nome do recurso
+        // Fallback: tentar match por nome do recurso e parentRefs
         const fallbackReport = vulnerabilityReports.find(report => {
           const reportName = report.name.toLowerCase();
           const resourceNameLower = name.toLowerCase();
@@ -119,8 +119,18 @@ const Extension = (props) => {
           console.log(`[Trivy Extension]    Report name: ${reportName}`);
           console.log(`[Trivy Extension]    Resource name: ${resourceNameLower}`);
           console.log(`[Trivy Extension]    Container: ${containerLower}`);
+          console.log(`[Trivy Extension]    ParentRefs:`, report.parentRefs);
           
-          // Tentar match por partes do nome
+          // Estratégia 1: Match por parentRefs (mais confiável)
+          if (report.parentRefs && report.parentRefs.length > 0) {
+            const parentRef = report.parentRefs[0];
+            if (parentRef.name && parentRef.name.toLowerCase() === resourceNameLower) {
+              console.log(`[Trivy Extension] ✅ Fallback match por parentRef: ${report.name} -> ${parentRef.name}`);
+              return true;
+            }
+          }
+          
+          // Estratégia 2: Tentar match por partes do nome
           const nameMatch = reportName.includes(resourceNameLower) || resourceNameLower.includes(reportName);
           const containerMatch = reportName.includes(containerLower) || containerLower.includes(reportName);
           
