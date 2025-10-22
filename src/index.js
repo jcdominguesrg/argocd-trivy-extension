@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // Version bump for cache invalidation
-window.EXTENSION_VERSION = '0.2.11';
+window.EXTENSION_VERSION = '0.2.12';
 import './index.css';
 import { Tab, Tabs } from "@mui/material";
 import DataGrid from './components/grid/vulnerability-report';
@@ -9,7 +9,6 @@ import Dashboard from './components/dashboard/dashboard';
 
 const Extension = (props) => {
 
-  console.log(`[Trivy Extension] Versão ${window.EXTENSION_VERSION} carregada`);
 
   const { resource, application } = props;
   const appName = application?.metadata?.name || "";
@@ -29,13 +28,9 @@ const Extension = (props) => {
   const findVulnerabilityReportByLabels = async (kind, name, container) => {
     if (!name) return '';
     
-    console.log(`[Trivy Extension] Procurando VulnerabilityReport por labels: kind=${kind}, name=${name}, container=${container}`);
-    
     try {
       // Usar /resource-tree para buscar VulnerabilityReports
       const treeUrl = `${window.location.origin}/api/v1/applications/${encodeURIComponent(appName)}/resource-tree?appNamespace=${encodeURIComponent(application?.metadata?.namespace || 'argo')}`;
-      
-      console.log(`[Trivy Extension] Buscando resource tree: ${treeUrl}`);
       
       const treeResponse = await fetch(treeUrl, { 
         method: 'GET',
@@ -43,15 +38,12 @@ const Extension = (props) => {
       });
       
       if (!treeResponse.ok) {
-        console.log(`[Trivy Extension] Erro ao buscar resource tree: ${treeResponse.status}`);
         return '';
       }
       
       const treeData = await treeResponse.json();
-      console.log(`[Trivy Extension] Resource tree carregado com ${treeData.nodes?.length || 0} nós`);
       
       if (!treeData.nodes || treeData.nodes.length === 0) {
-        console.log('[Trivy Extension] Nenhum nó encontrado no resource tree');
         return '';
       }
       
@@ -61,33 +53,17 @@ const Extension = (props) => {
         node.group === 'aquasecurity.github.io'
       );
       
-      console.log(`[Trivy Extension] VulnerabilityReports encontrados (todos os namespaces):`, vulnerabilityReports.map(r => `${r.name} (${r.namespace})`));
-      
       // Filtrar por namespace específico
       const namespaceFilteredReports = vulnerabilityReports.filter(node => 
         node.namespace === resourceNamespace
       );
       
-      console.log(`[Trivy Extension] VulnerabilityReports no namespace '${resourceNamespace}':`, namespaceFilteredReports.map(r => r.name));
-      
       // Usar os reports filtrados por namespace
       const finalReports = namespaceFilteredReports.length > 0 ? namespaceFilteredReports : vulnerabilityReports;
       
-      console.log(`[Trivy Extension] Encontrados ${finalReports.length} VulnerabilityReports no resource tree`);
-      
       if (finalReports.length === 0) {
-        console.log('[Trivy Extension] Nenhum VulnerabilityReport encontrado no resource tree');
         return '';
       }
-      
-      // Listar todos os VulnerabilityReports para debug
-      console.log(`[Trivy Extension] VulnerabilityReports disponíveis:`);
-      finalReports.forEach((report, index) => {
-        console.log(`[Trivy Extension] ${index + 1}. ${report.name} (namespace: ${report.namespace})`);
-        console.log(`[Trivy Extension]    Labels:`, report.info?.labels || {});
-        console.log(`[Trivy Extension]    Info completo:`, report.info);
-        console.log(`[Trivy Extension]    Report completo:`, report);
-      });
       
       // Buscar por labels do Trivy Operator
       const matchingReport = finalReports.find(report => {
@@ -96,17 +72,8 @@ const Extension = (props) => {
         const containerMatch = labels['trivy-operator.container.name'] === container;
         const kindMatch = labels['trivy-operator.resource.kind']?.toLowerCase() === kind.toLowerCase();
         
-        console.log(`[Trivy Extension] DEBUG: Testando match para ${report.name}`);
-        console.log(`[Trivy Extension]    Labels:`, labels);
-        console.log(`[Trivy Extension]    resourceNameMatch: ${resourceNameMatch} (esperado: ${name})`);
-        console.log(`[Trivy Extension]    containerMatch: ${containerMatch} (esperado: ${container})`);
-        console.log(`[Trivy Extension]    kindMatch: ${kindMatch} (esperado: ${kind})`);
         
         if (resourceNameMatch && containerMatch && kindMatch) {
-          console.log(`[Trivy Extension] ✅ Match por labels: ${report.name}`);
-          console.log(`[Trivy Extension]    resource.name: ${labels['trivy-operator.resource.name']}`);
-          console.log(`[Trivy Extension]    container.name: ${labels['trivy-operator.container.name']}`);
-          console.log(`[Trivy Extension]    resource.kind: ${labels['trivy-operator.resource.kind']}`);
           return true;
         }
         
@@ -114,11 +81,6 @@ const Extension = (props) => {
       });
       
       if (!matchingReport) {
-        console.log('[Trivy Extension] DEBUG: Entrando no bloco de fallback.');
-        console.log('[Trivy Extension] Nenhum VulnerabilityReport correspondente encontrado por labels');
-        console.log('[Trivy Extension] Tentando fallback por nome...');
-        console.log(`[Trivy Extension] Buscando fallback para: name=${name}, container=${container}`);
-        console.log(`[Trivy Extension] Total de VulnerabilityReports para fallback: ${finalReports.length}`);
         
         // Fallback: tentar match por nome do recurso e parentRefs
         const fallbackReport = finalReports.find(report => {
@@ -126,19 +88,11 @@ const Extension = (props) => {
           const resourceNameLower = name.toLowerCase();
           const containerLower = container.toLowerCase();
           
-          console.log(`[Trivy Extension] Testando fallback: ${report.name}`);
-          console.log(`[Trivy Extension]    Report name: ${reportName}`);
-          console.log(`[Trivy Extension]    Resource name: ${resourceNameLower}`);
-          console.log(`[Trivy Extension]    Container: ${containerLower}`);
-          console.log(`[Trivy Extension]    ParentRefs:`, report.parentRefs);
-          console.log(`[Trivy Extension]    Namespace: ${report.namespace}`);
-          console.log(`[Trivy Extension]    Full report:`, report);
           
           // Estratégia 1: Match por parentRefs (mais confiável)
           if (report.parentRefs && report.parentRefs.length > 0) {
             const parentRef = report.parentRefs[0];
             if (parentRef.name && parentRef.name.toLowerCase() === resourceNameLower) {
-              console.log(`[Trivy Extension] ✅ Fallback match por parentRef: ${report.name} -> ${parentRef.name}`);
               return true;
             }
           }
@@ -147,14 +101,7 @@ const Extension = (props) => {
           const nameMatch = reportName.includes(resourceNameLower) || resourceNameLower.includes(reportName);
           const containerMatch = reportName.includes(containerLower) || containerLower.includes(reportName);
           
-          console.log(`[Trivy Extension]    Name match: ${nameMatch}`);
-          console.log(`[Trivy Extension]    Container match: ${containerMatch}`);
-          
           if (nameMatch || containerMatch) {
-            console.log(`[Trivy Extension] ✅ Fallback match: ${report.name}`);
-            console.log(`[Trivy Extension]    Nome do recurso: ${resourceNameLower}`);
-            console.log(`[Trivy Extension]    Container: ${containerLower}`);
-            console.log(`[Trivy Extension]    Report name: ${reportName}`);
             return true;
           }
           
@@ -164,53 +111,6 @@ const Extension = (props) => {
         if (fallbackReport) {
           const crName = fallbackReport.name;
           const detailUrl = `${baseURI}?name=${encodeURIComponent(crName)}&resourceName=${encodeURIComponent(crName)}&namespace=${encodeURIComponent(resourceNamespace)}&group=aquasecurity.github.io&version=v1alpha1&kind=VulnerabilityReport&appNamespace=${encodeURIComponent(application?.metadata?.namespace || 'argo')}`;
-          
-          console.log(`✅ [Trivy Extension] VulnerabilityReport encontrado por fallback: ${crName}`);
-          console.log(`✅ [Trivy Extension] URL gerada: ${detailUrl}`);
-          console.log(`✅ [Trivy Extension] Parâmetros da URL:`);
-          console.log(`✅ [Trivy Extension]   - name: ${crName}`);
-          console.log(`✅ [Trivy Extension]   - resourceName: ${crName}`);
-          console.log(`✅ [Trivy Extension]   - namespace: ${resourceNamespace}`);
-          console.log(`✅ [Trivy Extension]   - group: aquasecurity.github.io`);
-          console.log(`✅ [Trivy Extension]   - version: v1alpha1`);
-          console.log(`✅ [Trivy Extension]   - kind: VulnerabilityReport`);
-          console.log(`✅ [Trivy Extension]   - appNamespace: ${application?.metadata?.namespace || 'argo'}`);
-          
-          // Testar a URL imediatamente
-          console.log(`✅ [Trivy Extension] Testando URL imediatamente...`);
-          fetch(detailUrl, { 
-            method: 'GET',
-            headers: { 'Accept': 'application/json' }
-          })
-          .then(response => {
-            console.log(`✅ [Trivy Extension] Resposta da URL: ${response.status} ${response.statusText}`);
-            if (response.ok) {
-              return response.json();
-            } else {
-              throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-          })
-          .then(data => {
-            console.log(`✅ [Trivy Extension] Dados recebidos:`, data);
-            if (data && data.manifest) {
-              try {
-                const manifest = JSON.parse(data.manifest);
-                console.log(`✅ [Trivy Extension] Manifest parsed:`, manifest);
-                if (manifest.vulnerabilities) {
-                  console.log(`✅ [Trivy Extension] Vulnerabilities count: ${manifest.vulnerabilities.length}`);
-                } else {
-                  console.log(`❌ [Trivy Extension] No vulnerabilities field in manifest`);
-                }
-              } catch (e) {
-                console.log(`❌ [Trivy Extension] Error parsing manifest:`, e);
-              }
-            } else {
-              console.log(`❌ [Trivy Extension] No manifest in response`);
-            }
-          })
-          .catch(error => {
-            console.error(`❌ [Trivy Extension] Erro ao testar URL:`, error);
-          });
           
           return detailUrl;
         }
@@ -224,12 +124,8 @@ const Extension = (props) => {
           const onlyReport = finalReports[0];
           const crName = onlyReport.name;
           const detailUrl = `${baseURI}?name=${encodeURIComponent(crName)}&resourceName=${encodeURIComponent(crName)}&namespace=${encodeURIComponent(resourceNamespace)}&group=aquasecurity.github.io&version=v1alpha1&kind=VulnerabilityReport&appNamespace=${encodeURIComponent(application?.metadata?.namespace || 'argo')}`;
-          console.log('[Trivy Extension] ✅ Usando único VulnerabilityReport disponível como fallback:', crName);
-          console.log(`✅ [Trivy Extension] URL gerada: ${detailUrl}`);
           return detailUrl;
         }
-
-        console.log('[Trivy Extension] ❌ Nenhum VulnerabilityReport encontrado por fallback');
         return '';
       }
       
@@ -237,11 +133,9 @@ const Extension = (props) => {
       const crName = matchingReport.name;
       const detailUrl = `${baseURI}?name=${encodeURIComponent(crName)}&resourceName=${encodeURIComponent(crName)}&namespace=${encodeURIComponent(resourceNamespace)}&group=aquasecurity.github.io&version=v1alpha1&kind=VulnerabilityReport&appNamespace=${encodeURIComponent(application?.metadata?.namespace || 'argo')}`;
       
-      console.log(`✅ [Trivy Extension] VulnerabilityReport encontrado: ${crName}`);
       return detailUrl;
     }
     catch (error) {
-      console.log('[Trivy Extension] Erro ao procurar VulnerabilityReport:', error);
       return '';
     }
   };
@@ -282,19 +176,11 @@ const Extension = (props) => {
   useEffect(() => {
     const loadReport = async () => {
       if (resourceKind && resourceName && containerName) {
-        console.log(`[Trivy Extension] DEBUG: Carregando VulnerabilityReport automaticamente`);
-        console.log(`[Trivy Extension]   - resourceKind: ${resourceKind}`);
-        console.log(`[Trivy Extension]   - resourceName: ${resourceName}`);
-        console.log(`[Trivy Extension]   - containerName: ${containerName}`);
-        console.log(`[Trivy Extension]   - resourceNamespace: ${resourceNamespace}`);
-        
         setIsLoading(true);
         try {
           const url = await findVulnerabilityReportByLabels(resourceKind, resourceName, containerName);
-          console.log(`[Trivy Extension] DEBUG: URL retornada: ${url}`);
           setReportUrl(url);
         } catch (error) {
-          console.error('[Trivy Extension] Erro ao carregar VulnerabilityReport:', error);
           setReportUrl('');
         } finally {
           setIsLoading(false);
@@ -339,11 +225,6 @@ const Extension = (props) => {
       {!isLoading && !reportUrl && (
         <div style={{ padding: '10px', color: '#b00' }}>
           Nenhum VulnerabilityReport encontrado para este recurso.
-        </div>
-      )}
-      {reportUrl && (
-        <div style={{ padding: '10px', color: '#666', fontSize: '12px' }}>
-          DEBUG: reportUrl = {reportUrl}
         </div>
       )}
     </div>
