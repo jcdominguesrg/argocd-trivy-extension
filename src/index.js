@@ -152,6 +152,28 @@ const Extension = (props) => {
           console.log(`✅ [Trivy Extension]   - version: v1alpha1`);
           console.log(`✅ [Trivy Extension]   - kind: VulnerabilityReport`);
           console.log(`✅ [Trivy Extension]   - appNamespace: ${application?.metadata?.namespace || 'argo'}`);
+          
+          // Testar a URL imediatamente
+          console.log(`✅ [Trivy Extension] Testando URL imediatamente...`);
+          fetch(detailUrl, { 
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+          })
+          .then(response => {
+            console.log(`✅ [Trivy Extension] Resposta da URL: ${response.status} ${response.statusText}`);
+            if (response.ok) {
+              return response.json();
+            } else {
+              throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+          })
+          .then(data => {
+            console.log(`✅ [Trivy Extension] Dados recebidos:`, data);
+          })
+          .catch(error => {
+            console.error(`❌ [Trivy Extension] Erro ao testar URL:`, error);
+          });
+          
           return detailUrl;
         }
 
@@ -279,6 +301,11 @@ const Extension = (props) => {
       {!isLoading && !reportUrl && (
         <div style={{ padding: '10px', color: '#b00' }}>
           Nenhum VulnerabilityReport encontrado para este recurso.
+        </div>
+      )}
+      {reportUrl && (
+        <div style={{ padding: '10px', color: '#666', fontSize: '12px' }}>
+          DEBUG: reportUrl = {reportUrl}
         </div>
       )}
     </div>
