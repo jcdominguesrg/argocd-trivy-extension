@@ -83,6 +83,12 @@ const Extension = (props) => {
         const containerMatch = labels['trivy-operator.container.name'] === container;
         const kindMatch = labels['trivy-operator.resource.kind']?.toLowerCase() === kind.toLowerCase();
         
+        console.log(`[Trivy Extension] DEBUG: Testando match para ${report.name}`);
+        console.log(`[Trivy Extension]    Labels:`, labels);
+        console.log(`[Trivy Extension]    resourceNameMatch: ${resourceNameMatch} (esperado: ${name})`);
+        console.log(`[Trivy Extension]    containerMatch: ${containerMatch} (esperado: ${container})`);
+        console.log(`[Trivy Extension]    kindMatch: ${kindMatch} (esperado: ${kind})`);
+        
         if (resourceNameMatch && containerMatch && kindMatch) {
           console.log(`[Trivy Extension] ✅ Match por labels: ${report.name}`);
           console.log(`[Trivy Extension]    resource.name: ${labels['trivy-operator.resource.name']}`);
@@ -95,6 +101,7 @@ const Extension = (props) => {
       });
       
       if (!matchingReport) {
+        console.log('[Trivy Extension] DEBUG: Entrando no bloco de fallback.');
         console.log('[Trivy Extension] Nenhum VulnerabilityReport correspondente encontrado por labels');
         console.log('[Trivy Extension] Tentando fallback por nome...');
         console.log(`[Trivy Extension] Buscando fallback para: name=${name}, container=${container}`);
@@ -227,7 +234,7 @@ const Extension = (props) => {
         </div>
       )}
 
-        <Tabs value={currentTabIndex} onChange={handleTabChange}>
+          <Tabs value={currentTabIndex} onChange={handleTabChange}>
           <Tab label='Table' />
           <Tab label='Dashboard' />
         </Tabs>
