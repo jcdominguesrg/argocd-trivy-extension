@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // Version bump for cache invalidation
-window.EXTENSION_VERSION = '0.2.10';
+window.EXTENSION_VERSION = '0.2.11';
 import './index.css';
 import { Tab, Tabs } from "@mui/material";
 import DataGrid from './components/grid/vulnerability-report';
@@ -58,20 +58,31 @@ const Extension = (props) => {
       // Filtrar VulnerabilityReports no resource tree
       const vulnerabilityReports = treeData.nodes.filter(node => 
         node.kind === 'VulnerabilityReport' && 
-        node.group === 'aquasecurity.github.io' &&
+        node.group === 'aquasecurity.github.io'
+      );
+      
+      console.log(`[Trivy Extension] VulnerabilityReports encontrados (todos os namespaces):`, vulnerabilityReports.map(r => `${r.name} (${r.namespace})`));
+      
+      // Filtrar por namespace específico
+      const namespaceFilteredReports = vulnerabilityReports.filter(node => 
         node.namespace === resourceNamespace
       );
       
-      console.log(`[Trivy Extension] Encontrados ${vulnerabilityReports.length} VulnerabilityReports no resource tree`);
+      console.log(`[Trivy Extension] VulnerabilityReports no namespace '${resourceNamespace}':`, namespaceFilteredReports.map(r => r.name));
       
-      if (vulnerabilityReports.length === 0) {
+      // Usar os reports filtrados por namespace
+      const finalReports = namespaceFilteredReports.length > 0 ? namespaceFilteredReports : vulnerabilityReports;
+      
+      console.log(`[Trivy Extension] Encontrados ${finalReports.length} VulnerabilityReports no resource tree`);
+      
+      if (finalReports.length === 0) {
         console.log('[Trivy Extension] Nenhum VulnerabilityReport encontrado no resource tree');
         return '';
       }
       
       // Listar todos os VulnerabilityReports para debug
       console.log(`[Trivy Extension] VulnerabilityReports disponíveis:`);
-      vulnerabilityReports.forEach((report, index) => {
+      finalReports.forEach((report, index) => {
         console.log(`[Trivy Extension] ${index + 1}. ${report.name} (namespace: ${report.namespace})`);
         console.log(`[Trivy Extension]    Labels:`, report.info?.labels || {});
         console.log(`[Trivy Extension]    Info completo:`, report.info);
@@ -79,7 +90,7 @@ const Extension = (props) => {
       });
       
       // Buscar por labels do Trivy Operator
-      const matchingReport = vulnerabilityReports.find(report => {
+      const matchingReport = finalReports.find(report => {
         const labels = report.info?.labels || {};
         const resourceNameMatch = labels['trivy-operator.resource.name'] === name;
         const containerMatch = labels['trivy-operator.container.name'] === container;
@@ -107,10 +118,10 @@ const Extension = (props) => {
         console.log('[Trivy Extension] Nenhum VulnerabilityReport correspondente encontrado por labels');
         console.log('[Trivy Extension] Tentando fallback por nome...');
         console.log(`[Trivy Extension] Buscando fallback para: name=${name}, container=${container}`);
-        console.log(`[Trivy Extension] Total de VulnerabilityReports para fallback: ${vulnerabilityReports.length}`);
+        console.log(`[Trivy Extension] Total de VulnerabilityReports para fallback: ${finalReports.length}`);
         
         // Fallback: tentar match por nome do recurso e parentRefs
-        const fallbackReport = vulnerabilityReports.find(report => {
+        const fallbackReport = finalReports.find(report => {
           const reportName = report.name.toLowerCase();
           const resourceNameLower = name.toLowerCase();
           const containerLower = container.toLowerCase();
@@ -120,6 +131,8 @@ const Extension = (props) => {
           console.log(`[Trivy Extension]    Resource name: ${resourceNameLower}`);
           console.log(`[Trivy Extension]    Container: ${containerLower}`);
           console.log(`[Trivy Extension]    ParentRefs:`, report.parentRefs);
+          console.log(`[Trivy Extension]    Namespace: ${report.namespace}`);
+          console.log(`[Trivy Extension]    Full report:`, report);
           
           // Estratégia 1: Match por parentRefs (mais confiável)
           if (report.parentRefs && report.parentRefs.length > 0) {
@@ -179,6 +192,21 @@ const Extension = (props) => {
           })
           .then(data => {
             console.log(`✅ [Trivy Extension] Dados recebidos:`, data);
+            if (data && data.manifest) {
+              try {
+                const manifest = JSON.parse(data.manifest);
+                console.log(`✅ [Trivy Extension] Manifest parsed:`, manifest);
+                if (manifest.vulnerabilities) {
+                  console.log(`✅ [Trivy Extension] Vulnerabilities count: ${manifest.vulnerabilities.length}`);
+                } else {
+                  console.log(`❌ [Trivy Extension] No vulnerabilities field in manifest`);
+                }
+              } catch (e) {
+                console.log(`❌ [Trivy Extension] Error parsing manifest:`, e);
+              }
+            } else {
+              console.log(`❌ [Trivy Extension] No manifest in response`);
+            }
           })
           .catch(error => {
             console.error(`❌ [Trivy Extension] Erro ao testar URL:`, error);
@@ -192,8 +220,8 @@ const Extension = (props) => {
         // it's the correct one. This handles cases where the operator created
         // a short autogenerated name like "replicaset-7db86675f9" that doesn't
         // contain the full resource name.
-        if (vulnerabilityReports.length === 1) {
-          const onlyReport = vulnerabilityReports[0];
+        if (finalReports.length === 1) {
+          const onlyReport = finalReports[0];
           const crName = onlyReport.name;
           const detailUrl = `${baseURI}?name=${encodeURIComponent(crName)}&resourceName=${encodeURIComponent(crName)}&namespace=${encodeURIComponent(resourceNamespace)}&group=aquasecurity.github.io&version=v1alpha1&kind=VulnerabilityReport&appNamespace=${encodeURIComponent(application?.metadata?.namespace || 'argo')}`;
           console.log('[Trivy Extension] ✅ Usando único VulnerabilityReport disponível como fallback:', crName);
