@@ -142,6 +142,14 @@ const Extension = (props) => {
           
           console.log(`✅ [Trivy Extension] VulnerabilityReport encontrado por fallback: ${crName}`);
           console.log(`✅ [Trivy Extension] URL gerada: ${detailUrl}`);
+          console.log(`✅ [Trivy Extension] Parâmetros da URL:`);
+          console.log(`✅ [Trivy Extension]   - name: ${crName}`);
+          console.log(`✅ [Trivy Extension]   - resourceName: ${crName}`);
+          console.log(`✅ [Trivy Extension]   - namespace: ${resourceNamespace}`);
+          console.log(`✅ [Trivy Extension]   - group: aquasecurity.github.io`);
+          console.log(`✅ [Trivy Extension]   - version: v1alpha1`);
+          console.log(`✅ [Trivy Extension]   - kind: VulnerabilityReport`);
+          console.log(`✅ [Trivy Extension]   - appNamespace: ${application?.metadata?.namespace || 'argo'}`);
           return detailUrl;
         }
         
@@ -198,9 +206,16 @@ const Extension = (props) => {
   useEffect(() => {
     const loadReport = async () => {
       if (resourceKind && resourceName && containerName) {
+        console.log(`[Trivy Extension] DEBUG: Carregando VulnerabilityReport automaticamente`);
+        console.log(`[Trivy Extension]   - resourceKind: ${resourceKind}`);
+        console.log(`[Trivy Extension]   - resourceName: ${resourceName}`);
+        console.log(`[Trivy Extension]   - containerName: ${containerName}`);
+        console.log(`[Trivy Extension]   - resourceNamespace: ${resourceNamespace}`);
+        
         setIsLoading(true);
         try {
           const url = await findVulnerabilityReportByLabels(resourceKind, resourceName, containerName);
+          console.log(`[Trivy Extension] DEBUG: URL retornada: ${url}`);
           setReportUrl(url);
         } catch (error) {
           console.error('[Trivy Extension] Erro ao carregar VulnerabilityReport:', error);
